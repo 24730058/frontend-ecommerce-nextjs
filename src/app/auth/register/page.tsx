@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Eye, EyeOff, LoaderCircle, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation"; // Thêm để điều hướng
-import axios from "axios"; // Thêm thư viện gọi API
+import { Eye, EyeOff, LoaderCircle, MailCheck, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import axios from "axios";
 
 import { Button } from "@/components/ui/button";
 
@@ -14,13 +14,27 @@ const API_BASE_URL =
 type FormState = {
   fullName: string;
   email: string;
+  otp: string;
   password: string;
   confirmPassword: string;
+};
+
+type RegisterResponse = {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    role: string;
+  };
 };
 
 const initialForm: FormState = {
   fullName: "",
   email: "",
+  otp: "",
   password: "",
   confirmPassword: "",
 };
@@ -31,6 +45,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
     isError: boolean;
@@ -48,8 +63,59 @@ export default function RegisterPage() {
     setMessage(null);
   };
 
+  const onRequestOtp = async () => {
+    if (!form.email.trim()) {
+      setMessage({
+        text: "Vui lòng nhập email trước khi lấy mã OTP.",
+        isError: true,
+      });
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setMessage(null);
+
+    try {
+      const { data } = await axios.post(
+        `${API_BASE_URL}/auth/request-otp?type=register`,
+        {
+          email: form.email.trim(),
+        },
+      );
+
+      setMessage({
+        text: data?.message ?? "Đã gửi OTP. Vui lòng kiểm tra email.",
+        isError: false,
+      });
+    } catch (error: unknown) {
+      let errorMsg: string | string[] = "Không thể gửi OTP.";
+
+      if (axios.isAxiosError(error)) {
+        const apiMessage = error.response?.data?.message;
+        if (typeof apiMessage === "string" || Array.isArray(apiMessage)) {
+          errorMsg = apiMessage;
+        }
+      }
+
+      setMessage({
+        text: Array.isArray(errorMsg) ? errorMsg[0] : errorMsg,
+        isError: true,
+      });
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!form.otp.trim()) {
+      setMessage({
+        text: "Vui lòng nhập mã OTP để hoàn tất đăng ký.",
+        isError: true,
+      });
+      return;
+    }
 
     if (passwordError) {
       setMessage({ text: "Vui lòng kiểm tra lại mật khẩu.", isError: true });
@@ -60,33 +126,35 @@ export default function RegisterPage() {
     setMessage(null);
 
     try {
-      // 1. Tách FullName thành firstName và lastName để khớp với NestJS DTO
       const nameParts = form.fullName.trim().split(" ");
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(" ") || "";
 
-      // 2. Gọi API NestJS (đảm bảo URL này khớp với backend của bạn)
-      // Ví dụ: http://localhost:3000/api/auth/register (nếu có global prefix là api)
-      await axios.post(`${API_BASE_URL}/auth/register`, {
-        email: form.email,
-        password: form.password,
-        firstName: firstName,
-        lastName: lastName,
-      });
+      const { data } = await axios.post<RegisterResponse>(
+        `${API_BASE_URL}/auth/register`,
+        {
+          email: form.email.trim(),
+          password: form.password,
+          firstName,
+          lastName,
+          otp: form.otp.trim(),
+        },
+      );
 
-      // 3. Xử lý thành công
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
       setMessage({
-        text: "Đăng ký thành công! Đang chuyển hướng...",
+        text: "Đăng ký thành công! Đang đăng nhập...",
         isError: false,
       });
       setForm(initialForm);
 
-      // Đợi 2 giây để khách thấy thông báo rồi chuyển trang
       setTimeout(() => {
-        router.push("/auth/login");
-      }, 2000);
+        router.push("/home");
+      }, 1000);
     } catch (error: unknown) {
-      // 4. Xử lý lỗi từ NestJS (Ví dụ: Email đã tồn tại - 409)
       let errorMsg: string | string[] = "Có lỗi xảy ra khi đăng ký.";
 
       if (axios.isAxiosError(error)) {
@@ -144,14 +212,51 @@ export default function RegisterPage() {
             <label htmlFor="email" className="text-sm font-medium">
               Email
             </label>
+            <div className="flex gap-2">
+              <input
+                id="email"
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => onFieldChange("email", e.target.value)}
+                placeholder="you@example.com"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/80 focus:border-ring focus:ring-2 focus:ring-ring/30"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0"
+                onClick={onRequestOtp}
+                disabled={isSendingOtp || isSubmitting}
+              >
+                {isSendingOtp ? (
+                  <LoaderCircle className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <MailCheck className="mr-2 size-4" />
+                )}
+                {isSendingOtp ? "Đang gửi" : "Lấy OTP"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Nhấn "Lấy OTP" để nhận mã xác thực qua email.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="otp" className="text-sm font-medium">
+              Mã OTP
+            </label>
             <input
-              id="email"
-              type="email"
+              id="otp"
+              type="text"
               required
-              value={form.email}
-              onChange={(e) => onFieldChange("email", e.target.value)}
-              placeholder="you@example.com"
-              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/80 focus:border-ring focus:ring-2 focus:ring-ring/30"
+              value={form.otp}
+              onChange={(e) =>
+                onFieldChange("otp", e.target.value.toUpperCase())
+              }
+              placeholder="Nhập 6 ký tự OTP"
+              maxLength={6}
+              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm uppercase outline-none transition-colors placeholder:text-muted-foreground/80 focus:border-ring focus:ring-2 focus:ring-ring/30"
             />
           </div>
 

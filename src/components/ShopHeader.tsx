@@ -144,6 +144,9 @@ export function ShopHeader() {
                   <DropdownMenuItem asChild>
                     <Link href="/auth/login">Đăng nhập</Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/auth/forgot-password">Quên mật khẩu</Link>
+                  </DropdownMenuItem>
                 </>
               ) : (
                 <>

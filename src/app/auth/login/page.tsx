@@ -187,6 +187,15 @@ export default function LoginPage() {
             Đăng ký ngay
           </Link>
         </p>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          Quên mật khẩu?{" "}
+          <Link
+            href="/auth/forgot-password"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Khôi phục ngay
+          </Link>
+        </p>
       </section>
     </main>
   );
